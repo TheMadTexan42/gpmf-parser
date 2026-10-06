@@ -399,6 +399,14 @@ void PrintGPMF(GPMF_stream *ms)
 		uint32_t indent, level = GPMF_NestLevel(ms);
 		void *data = GPMF_RawData(ms);
 
+		/* GPMF_Type/Repeat describe decompressed samples; RawData is compressed.
+		   Do not interpret that shorter buffer as an uncompressed sample array. */
+		if (GPMF_SAMPLE_TYPE(ms->buffer[ms->pos + 1]) == GPMF_TYPE_COMPRESSED) {
+			DBG_MSG("%c%c%c%c compressed type '%c', %u samples, %u stored bytes\n",
+			        PRINTF_4CC(key), type, repeat, size);
+			return;
+		}
+
 		if (key != GPMF_KEY_DEVICE) level++;
 
 		indent = level;

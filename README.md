@@ -70,6 +70,84 @@ This will return a brief overview of what metadata is stored in the given video 
 ./gpmfdemo ../samples/Fusion.mp4 -g
 ```
 
+### Read extracted binary GPMF files
+
+The demo can read a single extracted payload or concatenated complete `DEVC`
+records without the original video. Select raw input explicitly with `--raw`:
+
+```powershell
+.\build\native\gpmf-parser.exe samples\hero5.raw --raw -g
+.\build\native\gpmf-parser.exe "C:\Video to Edit\Oct 3 Ride\Max2\GS010012.gpmf" --raw -i -a -s
+```
+
+The existing options also apply to raw input: `-g` shows structure, `-i` shows
+stream/sample information, and `-fGPS9` selects GPS9 scaled values. By default
+the demo displays the first record; `-a` displays all records. `-s` toggles
+scaled output off, since it is enabled by default. Every raw record is validated
+even when only the first is displayed. Raw indices and byte offsets identify
+`DEVC` records, which need not correspond one-to-one to the original MP4 payloads.
+
+Raw files must contain binary GPMF, including nesting and scaling metadata.
+JSON, hexadecimal text, and unrelated media bytes are not accepted. Truncated,
+malformed, or empty input exits with an error. Container timing, video frame rate,
+and container-dependent sample rates are unavailable in raw mode; sensor values
+and embedded `STMP`/`TSMP` metadata remain accessible. Fuzzing options require the
+MP4 input route.
+
+### Export GPS tracks to GPX
+
+Both CMake and the demo Makefile build `gpmf2gpx`. It accepts MP4/MOV input by
+default and extracted GPMF with `--raw`:
+
+```powershell
+.\build\native\gpmf2gpx.exe "ride.mp4" "ride.gpx"
+.\build\native\gpmf2gpx.exe "ride.gpmf" "ride.gpx" --raw
+.\build\native\gpmf2gpx.exe "ride.gpmf" "ride-3d.gpx" --raw --fix 3d
+```
+
+If the output path is omitted, the input extension is replaced with `.gpx`.
+GPX point times use **GPS-recorded UTC for both input formats**. GPS9's scaled
+days-since-2000 and seconds-since-midnight fields supply each sample's timestamp,
+including fractional seconds. Use `--fix` to select the minimum position fix:
+
+- `--fix 3d` requires a 3D fix.
+- `--fix 2d` accepts 2D and 3D fixes (the default).
+- `--fix all` ignores fix status, including no fix or missing fix metadata.
+
+These options apply to both raw GPMF and MP4/MOV input. Missing fix metadata
+cannot satisfy a 2D or 3D requirement. The `--fix=3d` syntax is also accepted.
+Coordinates are still checked in every mode, point order is preserved, and duplicate or
+regressing recorded timestamps are reported without changing them.
+
+For older GPS5 data, a valid `GPSU` anchors the first sample in its block; later
+samples remain untimed. A valid position without an attributable GPS timestamp
+is exported without `<time>`, and the exporter reports the number of untimed
+points. Neither camera-relative `STMP` nor video/container times fill missing
+GPS times. Input errors and files without valid GPS positions return a nonzero
+exit code. The whole input is decoded before the output file is opened.
+
+### Build and verify on Windows with MSYS2 UCRT64
+
+With GCC and Make installed in `C:\msys64\ucrt64\bin` and that directory on
+`PATH`, use native Windows CMake and MinGW Makefiles:
+
+```powershell
+cmake -S . -B build/native -G "MinGW Makefiles" -DCMAKE_BUILD_TYPE=Release
+cmake --build build/native -j 4
+ctest --test-dir build/native --output-on-failure
+```
+
+The tests use Python 3 if available. To additionally validate a personal MAX2
+reference file, run:
+
+```powershell
+python tests/test_file_inputs.py --demo build/native/gpmf-parser.exe --gpx build/native/gpmf2gpx.exe --samples samples --reference-gpmf "C:\Video to Edit\Oct 3 Ride\Max2\GS010012.gpmf"
+```
+
+Alternatively, `mingw32-make -C demo` builds `demo/gpmfdemo.exe` and
+`demo/gpmf2gpx.exe`. Unix/MSYS shell users can run `make -C demo`; override
+`ASAN_FLAGS=` when the platform does not provide AddressSanitizer.
+
 ### Sample Code
 
 GPMF-parser.c and .h provide a payload decoder for any raw stream stored in compliant GPMF. Extraction of the RAW GPMF from a video or image file is not covered by this tool.

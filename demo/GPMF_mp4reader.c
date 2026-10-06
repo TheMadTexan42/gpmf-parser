@@ -32,7 +32,7 @@
 
 #define PRINT_MP4_STRUCTURE		0
 
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 #define LONGTELL	_ftelli64
 #else
 #define LONGTELL	ftell
@@ -54,48 +54,24 @@ uint32_t GetNumberPayloads(size_t mp4handle)
 
 size_t GetPayloadResource(size_t mp4handle, size_t resHandle, uint32_t payloadsize)
 {
-	resObject* res = (resObject*)resHandle;
-
-	if (res == NULL)
-	{
-		res = (resObject*)malloc(sizeof(resObject));
-		if (res)
-		{
-			memset(res, 0, sizeof(resObject));
-			resHandle = (size_t)res;
-		}
-	}
-
-	if(res)
-	{
-		uint32_t myBufferSize = payloadsize + 256;
-
-		if (res->buffer == NULL)
-		{
-			res->buffer = malloc(myBufferSize);
-			if (res->buffer)
-			{
-				res->bufferSize = myBufferSize;
-			}
-			else
-			{
-				free(res);
-				resHandle = 0;
-			}
-		}
-		else if (payloadsize > res->bufferSize)
-		{
-			res->buffer = realloc(res->buffer, myBufferSize);
-			res->bufferSize = myBufferSize;
-			if (res->buffer == NULL)
-			{
-				free(res);
-				resHandle = 0;
-			}
-		}
-	}
-
-	return resHandle;
+    resObject *res = (resObject *)resHandle;
+    uint32_t *buffer;
+    (void)mp4handle;
+    if (!res) {
+        res = (resObject *)calloc(1, sizeof(*res));
+        if (!res) return 0;
+    }
+    if (payloadsize > UINT32_MAX - 256) return (size_t)res;
+    if (!res->buffer || payloadsize > res->bufferSize) {
+        buffer = (uint32_t *)realloc(res->buffer, (size_t)payloadsize + 256);
+        if (buffer) {
+            res->buffer = buffer;
+            res->bufferSize = payloadsize + 256;
+        }
+    }
+    /* Retain the handle and old buffer on allocation failure for safe cleanup.
+       GetPayload checks capacity before reading. */
+    return (size_t)res;
 }
 
 
@@ -127,14 +103,14 @@ uint32_t *GetPayload(size_t mp4handle, size_t resHandle, uint32_t index)
 			uint32_t buffsizeneeded = mp4->metasizes[index];  // Add a little more to limit reallocations
 
 			resHandle = GetPayloadResource(mp4handle, resHandle, buffsizeneeded);
-			if(resHandle)
+			if (resHandle && res->buffer && res->bufferSize >= buffsizeneeded)
 			{
-#ifdef _WINDOWS
-				_fseeki64(mp4->mediafp, (__int64) mp4->metaoffsets[index], SEEK_SET);
+#if defined(_WIN32) || defined(_WINDOWS)
+				if (_fseeki64(mp4->mediafp, (__int64)mp4->metaoffsets[index], SEEK_SET) != 0) return NULL;
 #else
-				fseeko(mp4->mediafp, (off_t) mp4->metaoffsets[index], SEEK_SET);
+				if (fseeko(mp4->mediafp, (off_t)mp4->metaoffsets[index], SEEK_SET) != 0) return NULL;
 #endif
-				fread(res->buffer, 1, mp4->metasizes[index], mp4->mediafp);
+				if (fread(res->buffer, 1, mp4->metasizes[index], mp4->mediafp) != mp4->metasizes[index]) return NULL;
 				mp4->filepos = mp4->metaoffsets[index] + mp4->metasizes[index];
 				return res->buffer;
 			}
@@ -154,7 +130,7 @@ uint32_t WritePayload(size_t handle, uint32_t *payload, uint32_t payloadsize, ui
 	{
 		if ((mp4->filesize >= mp4->metaoffsets[index] + mp4->metasizes[index]) && mp4->metasizes[index] == payloadsize)
 		{
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 			_fseeki64(mp4->mediafp, (__int64)mp4->metaoffsets[index], SEEK_SET);
 #else
 			fseeko(mp4->mediafp, (off_t)mp4->metaoffsets[index], SEEK_SET);
@@ -176,7 +152,7 @@ void LongSeek(mp4object *mp4, int64_t offset)
 	{
 		if (mp4->filepos + offset < mp4->filesize)
 		{
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 			_fseeki64(mp4->mediafp, (__int64)offset, SEEK_CUR);
 #else
 			fseeko(mp4->mediafp, (off_t)offset, SEEK_CUR);
@@ -212,12 +188,12 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype, in
 
 	memset(mp4, 0, sizeof(mp4object));
 
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 	struct _stat64 mp4stat;
-	_stat64(filename, &mp4stat);
+	if (_stat64(filename, &mp4stat) != 0) { free(mp4); return 0; }
 #else
 	struct stat mp4stat;
-	stat(filename, &mp4stat);
+	if (stat(filename, &mp4stat) != 0) { free(mp4); return 0; }
 #endif
 	mp4->filesize = (uint64_t) mp4stat.st_size;
 //	printf("filesize = %ld\n", mp4->filesize);
@@ -228,7 +204,7 @@ size_t OpenMP4Source(char *filename, uint32_t traktype, uint32_t traksubtype, in
 	}
 
 	const char *mode = (flags & MP4_FLAG_READ_WRITE_MODE) ? "rb+" : "rb";
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 	fopen_s(&mp4->mediafp, filename, mode);
 #else
 	mp4->mediafp = fopen(filename, mode);
@@ -1105,12 +1081,12 @@ size_t OpenMP4SourceUDTA(char *filename, int32_t flags)
 
 	memset(mp4, 0, sizeof(mp4object));
 
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 	struct _stat64 mp4stat;
-	_stat64(filename, &mp4stat);
+	if (_stat64(filename, &mp4stat) != 0) { free(mp4); return 0; }
 #else
 	struct stat mp4stat;
-	stat(filename, &mp4stat);
+	if (stat(filename, &mp4stat) != 0) { free(mp4); return 0; }
 #endif
 	mp4->filesize = (uint64_t)mp4stat.st_size;
 	if (mp4->filesize < 64) 
@@ -1120,7 +1096,7 @@ size_t OpenMP4SourceUDTA(char *filename, int32_t flags)
 	}
 
 	const char *mode = (flags & MP4_FLAG_READ_WRITE_MODE) ? "rb+" : "rb";
-#ifdef _WINDOWS
+#if defined(_WIN32) || defined(_WINDOWS)
 	fopen_s(&mp4->mediafp, filename, mode);
 #else
 	mp4->mediafp = fopen(filename, mode);

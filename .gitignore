@@ -37,3 +37,9 @@
 
 # VSCode workspace files
 *.code-workspace
+
+# Demo builds and integration-test artifacts
+/build/
+/demo/gpmfdemo
+/demo/gpmf2gpx
+/tests/__pycache__/

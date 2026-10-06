@@ -34,3 +34,6 @@
 
 # pkg-config files
 /*.pc
+
+# VSCode workspace files
+*.code-workspace
